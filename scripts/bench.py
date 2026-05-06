@@ -15,6 +15,7 @@ from statistics import mean, median
 
 import chess
 
+from rorschach.bot import PROFILES as ADAPTIVE_PROFILES
 from rorschach.engine import PatriciaEngine
 from rorschach.maia import MaiaPredictor
 from rorschach.selector import select, select_adaptive
@@ -24,12 +25,6 @@ POS_PATH = DATA_DIR / "positions.jsonl"
 OUT_PATH = DATA_DIR / "bench_results.jsonl"
 
 DELTAS = [25, 50, 100, 200, 500, 1000]
-ADAPTIVE_PROFILES = {
-    "prudent":    dict(dmin=200, dmax=500,  safe_thresh=200),
-    "balanced":   dict(dmin=200, dmax=1000, safe_thresh=200),
-    "aggressive": dict(dmin=200, dmax=2000, safe_thresh=200),
-    "defensive":  dict(dmin=200, dmax=1000, safe_thresh=500),
-}
 K_CANDIDATES = 8
 TIME_MS = 200
 MAIA_TYPE = "blitz"

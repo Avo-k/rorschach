@@ -14,10 +14,10 @@ from rorschach.maia import MaiaPredictor
 from rorschach.selector import select_adaptive
 
 PROFILES: dict[str, dict[str, int]] = {
-    "prudent":    dict(dmin=200, dmax=500,  safe_thresh=200),
-    "balanced":   dict(dmin=200, dmax=1000, safe_thresh=200),
-    "aggressive": dict(dmin=200, dmax=2000, safe_thresh=200),
-    "defensive":  dict(dmin=200, dmax=1000, safe_thresh=500),
+    "prudent":    dict(dmin=20, dmax=100, safe_thresh=200),
+    "balanced":   dict(dmin=20, dmax=200, safe_thresh=200),
+    "aggressive": dict(dmin=50, dmax=400, safe_thresh=200),
+    "defensive":  dict(dmin=20, dmax=200, safe_thresh=500),
 }
 
 
