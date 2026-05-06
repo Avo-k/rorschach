@@ -17,11 +17,10 @@ from rorschach.bot import rorschach_move
 from rorschach.engine import PatriciaEngine
 from rorschach.maia import MaiaPredictor
 
-N_GAMES = 10
+PROFILE_PLAN = [("balanced", 5), ("aggressive", 5)]
 ELO_SELF = 1900
 ELO_OPPO = 1900
-SEED = 42
-PROFILE = "balanced"
+SEED = 42  # reset per profile so each block sees identical Maia sampling
 TIME_MS = 200
 MAX_PLIES = 200
 MAIA_TYPE = "blitz"
@@ -35,6 +34,7 @@ def play_one(
     *,
     rorschach_white: bool,
     rng: random.Random,
+    profile: str,
 ) -> tuple[list[tuple[chess.Move, str]], str]:
     board = chess.Board()
     moves: list[tuple[chess.Move, str]] = []
@@ -43,7 +43,7 @@ def play_one(
         if is_rorschach:
             move, info = rorschach_move(
                 board, engine, maia,
-                profile=PROFILE, time_ms=TIME_MS,
+                profile=profile, time_ms=TIME_MS,
                 elo_self=ELO_SELF, elo_oppo=ELO_OPPO,
             )
             comment = (
@@ -65,58 +65,67 @@ def play_one(
 
 
 def main() -> None:
-    rng = random.Random(SEED)
     print(f"loading maia2 ({MAIA_TYPE}, elo={ELO_SELF}) ...")
     maia = MaiaPredictor(type=MAIA_TYPE, device="cpu")
     print("ok\n")
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    score = {"R": 0, "M": 0, "D": 0}
+    scores: dict[str, dict[str, int]] = {}
     t_start = time.perf_counter()
+    round_no = 0
 
     with PatriciaEngine() as engine, OUT_PATH.open("w") as f:
-        for i in range(N_GAMES):
-            rorschach_white = (i % 2 == 0)
-            t0 = time.perf_counter()
-            moves, result = play_one(engine, maia, rorschach_white=rorschach_white, rng=rng)
-            dt = time.perf_counter() - t0
+        for profile, n_games in PROFILE_PLAN:
+            rng = random.Random(SEED)
+            score = {"R": 0, "M": 0, "D": 0}
+            print(f"=== profile={profile}  ({n_games} games) ===")
+            for i in range(n_games):
+                round_no += 1
+                rorschach_white = (i % 2 == 0)
+                t0 = time.perf_counter()
+                moves, result = play_one(
+                    engine, maia,
+                    rorschach_white=rorschach_white, rng=rng, profile=profile,
+                )
+                dt = time.perf_counter() - t0
 
-            game = chess.pgn.Game()
-            game.headers["Event"] = f"Rorschach vs Maia ({PROFILE})"
-            game.headers["Site"] = "local"
-            game.headers["Date"] = datetime.now().strftime("%Y.%m.%d")
-            game.headers["Round"] = str(i + 1)
-            game.headers["White"] = f"Rorschach({PROFILE})" if rorschach_white else f"Maia2-{ELO_SELF}"
-            game.headers["Black"] = f"Maia2-{ELO_SELF}" if rorschach_white else f"Rorschach({PROFILE})"
-            game.headers["Result"] = result
-            game.headers["TimeControl"] = f"0+{TIME_MS/1000:.2f}"
+                game = chess.pgn.Game()
+                r_label = f"Rorschach({profile})"
+                game.headers["Event"] = f"Rorschach vs Maia ({profile})"
+                game.headers["Site"] = "local"
+                game.headers["Date"] = datetime.now().strftime("%Y.%m.%d")
+                game.headers["Round"] = str(round_no)
+                game.headers["White"] = r_label if rorschach_white else f"Maia2-{ELO_SELF}"
+                game.headers["Black"] = f"Maia2-{ELO_SELF}" if rorschach_white else r_label
+                game.headers["Result"] = result
+                game.headers["TimeControl"] = f"0+{TIME_MS/1000:.2f}"
 
-            node = game
-            for move, comment in moves:
-                node = node.add_main_variation(move, comment=comment)
+                node = game
+                for move, comment in moves:
+                    node = node.add_main_variation(move, comment=comment)
 
-            f.write(str(game) + "\n\n")
-            f.flush()
+                f.write(str(game) + "\n\n")
+                f.flush()
 
-            # outcome from Rorschach's perspective
-            if result == "1-0":
-                outcome = "R" if rorschach_white else "M"
-            elif result == "0-1":
-                outcome = "M" if rorschach_white else "R"
-            elif result == "*":
-                outcome = "D"  # treat truncated as draw for the score
-            else:
-                outcome = "D"
-            score[outcome] += 1
+                if result == "1-0":
+                    outcome = "R" if rorschach_white else "M"
+                elif result == "0-1":
+                    outcome = "M" if rorschach_white else "R"
+                else:
+                    outcome = "D"
+                score[outcome] += 1
 
-            color = "W" if rorschach_white else "B"
-            print(f"  game {i+1:2d}  Rorschach={color}  plies={len(moves):3d}  "
-                  f"result={result:5s}  outcome={outcome}  ({dt:.1f}s)")
+                color = "W" if rorschach_white else "B"
+                print(f"  game {round_no:2d} [{profile:10s}]  R={color}  plies={len(moves):3d}  "
+                      f"result={result:5s}  outcome={outcome}  ({dt:.1f}s)")
+            scores[profile] = score
+            print()
 
     elapsed = time.perf_counter() - t_start
-    print(f"\nfinished in {elapsed:.1f}s")
-    print(f"Rorschach score: {score['R']}W / {score['D']}D / {score['M']}L")
-    print(f"PGN -> {OUT_PATH.relative_to(OUT_PATH.parent.parent.parent)}")
+    print(f"finished in {elapsed:.1f}s\n")
+    for profile, s in scores.items():
+        print(f"  {profile:10s}:  {s['R']}W / {s['D']}D / {s['M']}L")
+    print(f"\nPGN -> {OUT_PATH.relative_to(OUT_PATH.parent.parent.parent)}")
 
 
 if __name__ == "__main__":

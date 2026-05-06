@@ -8,6 +8,14 @@ from dataclasses import dataclass
 
 from rorschach.engine import Candidate
 
+# Above this |cp|, we're in mate territory (mate_score=10000 minus distance).
+# The selector bypasses the alien-filter here: Patricia's #1 is already the
+# shortest mate (when winning) or the longest defense (when losing) — picking
+# any other candidate within Δ would mean dragging out a mate or accepting
+# a faster mate, both of which are bad behavior. Tuned so mate-in-up-to-1000
+# plies is recognized as mate.
+MATE_CUTOFF = 9000
+
 
 @dataclass(frozen=True)
 class SelectorResult:
@@ -51,12 +59,20 @@ def select_adaptive(
 ) -> tuple["SelectorResult", int]:
     """Run the selector with Δ derived from the engine's best eval.
 
-    Returns (result, delta_used) — delta_used is logged for diagnostics.
+    Returns (result, delta_used). delta_used = 0 signals a mate-bypass.
     """
     if not candidates:
         raise ValueError("select_adaptive() got no candidates")
+
+    best = candidates[0]
+    if abs(best.cp) >= MATE_CUTOFF:
+        prob = float(maia_probs.get(best.move.uci(), 0.0))
+        return SelectorResult(
+            chosen=best, eval_loss_cp=0, maia_prob=prob, considered=[(best, prob)],
+        ), 0
+
     delta = adaptive_delta(
-        candidates[0].cp, dmin=dmin, dmax=dmax, safe_thresh=safe_thresh, slope=slope,
+        best.cp, dmin=dmin, dmax=dmax, safe_thresh=safe_thresh, slope=slope,
     )
     return select(candidates, maia_probs, delta_cp=delta), delta
 

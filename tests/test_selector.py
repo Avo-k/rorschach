@@ -71,6 +71,25 @@ def test_adaptive_delta_custom_safe_thresh():
     assert adaptive_delta(1000, safe_thresh=500) == 700
 
 
+def test_mate_bypass_picks_shortest_mate():
+    # Patricia returns mate-in-1 first, mate-in-5 second (cp diff = 4)
+    cands = [_c("e2g4", 9999), _c("a2a4", 9995), _c("h2h3", 9990)]
+    probs = {"e2g4": 0.4, "a2a4": 0.001, "h2h3": 0.001}
+    res, delta = select_adaptive(cands, probs)
+    assert delta == 0  # mate bypass
+    assert res.chosen.move.uci() == "e2g4"
+    assert res.eval_loss_cp == 0
+
+
+def test_mate_bypass_picks_longest_defense_when_losing():
+    # We're being mated; cp=-9990 (mate-in-10) is best, -9999 (mate-in-1) worst
+    cands = [_c("h7h6", -9990), _c("h7h5", -9995), _c("g7g6", -9999)]
+    probs = {"h7h6": 0.5, "h7h5": 0.001, "g7g6": 0.001}
+    res, delta = select_adaptive(cands, probs)
+    assert delta == 0
+    assert res.chosen.move.uci() == "h7h6"  # longest defense
+
+
 def test_select_adaptive_returns_delta():
     cands = [_c("e2e4", 600), _c("d2d4", 550), _c("g1f3", 100)]
     probs = {"e2e4": 0.5, "d2d4": 0.05, "g1f3": 0.0}
