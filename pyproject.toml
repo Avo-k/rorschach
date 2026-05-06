@@ -28,6 +28,9 @@ dependencies = [
     "python-dotenv>=1.2.2",
 ]
 
+[project.scripts]
+rorschach-uci = "rorschach.uci:main"
+
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu" }]
 

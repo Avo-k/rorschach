@@ -1,0 +1,226 @@
+"""UCI shim for Rorschach.
+
+Speaks the UCI protocol on stdin/stdout so any UCI host (lichess-bot,
+Arena, Cute Chess, …) can drive Rorschach.
+
+Resources are lazy: Patricia and Maia are loaded on the first `isready`,
+not at process start, so the host can probe `uci` cheaply.
+"""
+from __future__ import annotations
+
+import sys
+from dataclasses import dataclass
+
+import chess
+from dotenv import load_dotenv
+
+from rorschach.bot import PROFILES, rorschach_move
+from rorschach.engine import PatriciaEngine
+from rorschach.explorer import OpeningExplorer
+from rorschach.maia import MaiaPredictor
+
+
+@dataclass
+class Options:
+    profile: str = "balanced"
+    time_ms: int = 200
+    elo: int = 1900
+    maia_type: str = "blitz"  # "blitz" or "rapid"
+
+
+def _emit(line: str) -> None:
+    sys.stdout.write(line + "\n")
+    sys.stdout.flush()
+
+
+def _log(msg: str) -> None:
+    sys.stderr.write(f"[rorschach] {msg}\n")
+    sys.stderr.flush()
+
+
+def _parse_position(args: list[str]) -> chess.Board:
+    if not args:
+        return chess.Board()
+    if args[0] == "startpos":
+        board = chess.Board()
+        moves_at = 1
+    elif args[0] == "fen":
+        # FEN is 6 space-separated fields.
+        if len(args) < 7:
+            raise ValueError("bad position fen")
+        fen = " ".join(args[1:7])
+        board = chess.Board(fen)
+        moves_at = 7
+    else:
+        raise ValueError(f"bad position prefix {args[0]!r}")
+
+    if moves_at < len(args):
+        if args[moves_at] != "moves":
+            raise ValueError(f"expected 'moves', got {args[moves_at]!r}")
+        for uci in args[moves_at + 1:]:
+            board.push(chess.Move.from_uci(uci))
+    return board
+
+
+def _parse_go(args: list[str], turn_white: bool) -> int:
+    """Return time_ms budget for this move based on UCI go args."""
+    movetime = wtime = btime = winc = binc = None
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok == "movetime":
+            movetime = int(args[i + 1]); i += 2
+        elif tok == "wtime":
+            wtime = int(args[i + 1]); i += 2
+        elif tok == "btime":
+            btime = int(args[i + 1]); i += 2
+        elif tok == "winc":
+            winc = int(args[i + 1]); i += 2
+        elif tok == "binc":
+            binc = int(args[i + 1]); i += 2
+        elif tok in ("infinite", "ponder"):
+            i += 1
+        elif tok in ("depth", "nodes", "mate", "movestogo"):
+            i += 2  # ignore, we always do time-budget search
+        else:
+            i += 1
+    if movetime is not None:
+        return max(50, movetime)
+
+    my_time = wtime if turn_white else btime
+    my_inc = (winc if turn_white else binc) or 0
+    if my_time is None:
+        return 200  # no clock info — fixed default
+
+    # Crude TM: ~2.5% of remaining time + 90% of increment, clamped.
+    budget = int(my_time * 0.025 + my_inc * 0.9)
+    return max(50, min(3000, budget))
+
+
+def _emit_options() -> None:
+    profiles = " ".join(f"var {p}" for p in PROFILES)
+    _emit(f"option name Profile type combo default balanced {profiles}")
+    _emit("option name TimeMs type spin default 0 min 0 max 5000")  # 0 = use go's clock info
+    _emit("option name Elo type spin default 1900 min 1100 max 2000")
+    _emit("option name MaiaType type combo default blitz var blitz var rapid")
+
+
+def _set_option(opts: Options, words: list[str]) -> None:
+    # Format: setoption name <Name> [value <Value>]
+    if "name" not in words:
+        return
+    name_idx = words.index("name") + 1
+    val_idx = words.index("value") + 1 if "value" in words else None
+    name = words[name_idx]
+    value = " ".join(words[val_idx:]) if val_idx is not None else ""
+    if name == "Profile" and value in PROFILES:
+        opts.profile = value
+    elif name == "TimeMs":
+        opts.time_ms = int(value)
+    elif name == "Elo":
+        opts.elo = int(value)
+    elif name == "MaiaType" and value in {"blitz", "rapid"}:
+        opts.maia_type = value
+
+
+class _Resources:
+    """Lazy holder for Patricia, Maia, Explorer."""
+
+    def __init__(self) -> None:
+        self.engine: PatriciaEngine | None = None
+        self.maia: MaiaPredictor | None = None
+        self.explorer: OpeningExplorer | None = None
+
+    def ensure(self, opts: Options) -> None:
+        if self.engine is None:
+            _log("loading Patricia ...")
+            self.engine = PatriciaEngine()
+        if self.maia is None or getattr(self.maia, "_type", None) != opts.maia_type:
+            _log(f"loading Maia2 ({opts.maia_type}) ...")
+            self.maia = MaiaPredictor(type=opts.maia_type, device="cpu")
+            self.maia._type = opts.maia_type  # tag for re-init detection
+        if self.explorer is None:
+            self.explorer = OpeningExplorer()
+            if not self.explorer.token:
+                _log("warning: LICHESS_TOKEN not set, explorer disabled")
+
+    def shutdown(self) -> None:
+        if self.engine is not None:
+            try:
+                self.engine.quit()
+            except Exception:
+                pass
+            self.engine = None
+
+
+def main() -> None:
+    load_dotenv()
+    opts = Options()
+    resources = _Resources()
+    board = chess.Board()
+
+    try:
+        for raw in sys.stdin:
+            line = raw.strip()
+            if not line:
+                continue
+            words = line.split()
+            cmd = words[0]
+
+            if cmd == "uci":
+                _emit("id name Rorschach")
+                _emit("id author Avo-k")
+                _emit_options()
+                _emit("uciok")
+            elif cmd == "isready":
+                resources.ensure(opts)
+                _emit("readyok")
+            elif cmd == "setoption":
+                _set_option(opts, words)
+            elif cmd == "ucinewgame":
+                board = chess.Board()
+            elif cmd == "position":
+                try:
+                    board = _parse_position(words[1:])
+                except (ValueError, chess.InvalidMoveError) as exc:
+                    _log(f"bad position: {exc}")
+            elif cmd == "go":
+                resources.ensure(opts)
+                if opts.time_ms > 0:
+                    time_ms = opts.time_ms  # operator override
+                else:
+                    time_ms = _parse_go(words[1:], board.turn == chess.WHITE)
+                try:
+                    move, info = rorschach_move(
+                        board,
+                        resources.engine,                  # type: ignore[arg-type]
+                        resources.maia,                    # type: ignore[arg-type]
+                        explorer=resources.explorer,
+                        profile=opts.profile,
+                        time_ms=time_ms,
+                        elo_self=opts.elo,
+                        elo_oppo=opts.elo,
+                    )
+                    _emit(
+                        f"info depth {info.depth or 0} score cp {info.best_cp} "
+                        f"string Δ={info.delta_used} loss={info.eval_loss} "
+                        f"P={info.p_human:.3f} oracle={info.oracle}"
+                    )
+                    _emit(f"bestmove {move.uci()}")
+                except Exception as exc:  # last-resort fallback so the bot never hangs
+                    _log(f"search error: {exc!r}")
+                    legal = list(board.legal_moves)
+                    if legal:
+                        _emit(f"bestmove {legal[0].uci()}")
+                    else:
+                        _emit("bestmove 0000")
+            elif cmd in ("stop", "ponderhit"):
+                pass  # we don't ponder; nothing to interrupt
+            elif cmd == "quit":
+                break
+    finally:
+        resources.shutdown()
+
+
+if __name__ == "__main__":
+    main()

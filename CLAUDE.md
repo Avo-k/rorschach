@@ -61,6 +61,37 @@ Calibration loop:
 
 Patricia's strength can be lowered aggressively (`UCI_Elo`, `Skill_Level`, low `depth`/`movetime`) — that is **fine and expected**. The point is not to win; it is to play *weird-but-not-losing* moves.
 
+## Lichess deployment
+
+`rorschach-uci` is registered as a console script (see `pyproject.toml`).
+After `uv sync`, the entrypoint is at `.venv/bin/rorschach-uci` — a normal
+UCI engine that any host can drive.
+
+Wiring into [lichess-bot](https://github.com/lichess-bot-devs/lichess-bot):
+
+```bash
+# 1. one-time bot account upgrade (zero rated games on the account first)
+curl -d '' https://lichess.org/api/bot/account/upgrade \
+  -H "Authorization: Bearer YOUR_BOT_TOKEN"
+
+# 2. clone and install lichess-bot beside this repo
+git clone https://github.com/lichess-bot-devs/lichess-bot.git
+cd lichess-bot
+pip install -r requirements.txt
+
+# 3. cp our example config and edit the token
+cp ../rorschach/configs/lichess-bot.yml.example config.yml
+
+# 4. ensure LICHESS_TOKEN is in rorschach/.env (for the opening explorer)
+
+# 5. run
+python lichess-bot.py
+```
+
+The config points lichess-bot at `rorschach/.venv/bin/rorschach-uci`, which
+loads Patricia + Maia2 + the explorer on the first `isready`. UCI options
+expose the four profiles, fixed-time override, target Elo, and Maia type.
+
 ## Deployment target
 
 - **Proxmox VM, CPU-only.** Probably a small LXC or VM, 2–4 vCPU, 2–4 GB RAM.
