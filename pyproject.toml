@@ -25,6 +25,7 @@ dependencies = [
     "tqdm==4.65.0",
     # not in maia2's requirements.txt but imported by maia2/utils.py
     "pyyaml>=6",
+    "python-dotenv>=1.2.2",
 ]
 
 [tool.uv.sources]

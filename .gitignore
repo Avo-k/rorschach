@@ -20,6 +20,10 @@ bin/patricia_v*
 # Bench data (PGNs from Lichess API, extracted positions, results)
 data/
 
+# Local secrets (LICHESS_TOKEN, etc.)
+.env
+.env.local
+
 # IDE
 .vscode/
 .idea/

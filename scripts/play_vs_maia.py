@@ -12,6 +12,7 @@ from pathlib import Path
 
 import chess
 import chess.pgn
+from dotenv import load_dotenv
 
 from rorschach.bot import rorschach_move
 from rorschach.engine import PatriciaEngine
@@ -68,9 +69,12 @@ def play_one(
 
 
 def main() -> None:
+    load_dotenv()
     print(f"loading maia2 ({MAIA_TYPE}, elo={ELO_SELF}) ...")
     maia = MaiaPredictor(type=MAIA_TYPE, device="cpu")
     explorer = OpeningExplorer()
+    if not explorer.token:
+        print("warning: LICHESS_TOKEN not set, explorer will fall back to Maia")
     print("ok\n")
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
