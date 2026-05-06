@@ -8,6 +8,7 @@ not at process start, so the host can probe `uci` cheaply.
 """
 from __future__ import annotations
 
+import contextlib
 import sys
 from dataclasses import dataclass
 
@@ -132,13 +133,18 @@ class _Resources:
         self.explorer: OpeningExplorer | None = None
 
     def ensure(self, opts: Options) -> None:
+        # Maia2 / gdown / tqdm chatter goes to stdout by default; that pollutes
+        # the UCI channel. Redirect any side-effect prints to stderr while
+        # loading. The UCI host (lichess-bot) parses stdout strictly.
         if self.engine is None:
             _log("loading Patricia ...")
-            self.engine = PatriciaEngine()
+            with contextlib.redirect_stdout(sys.stderr):
+                self.engine = PatriciaEngine()
         if self.maia is None or getattr(self.maia, "_type", None) != opts.maia_type:
             _log(f"loading Maia2 ({opts.maia_type}) ...")
-            self.maia = MaiaPredictor(type=opts.maia_type, device="cpu")
-            self.maia._type = opts.maia_type  # tag for re-init detection
+            with contextlib.redirect_stdout(sys.stderr):
+                self.maia = MaiaPredictor(type=opts.maia_type, device="cpu")
+            self.maia._type = opts.maia_type
         if self.explorer is None:
             self.explorer = OpeningExplorer()
             if not self.explorer.token:
