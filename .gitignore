@@ -17,6 +17,9 @@ maia2_models/
 bin/patricia
 bin/patricia_v*
 
+# Bench data (PGNs from Lichess API, extracted positions, results)
+data/
+
 # IDE
 .vscode/
 .idea/

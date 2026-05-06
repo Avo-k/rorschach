@@ -1,0 +1,123 @@
+"""Play N games of Rorschach vs Maia, with Maia sampling from its distribution.
+
+Output: data/games_vs_maia.pgn — annotated with per-move diagnostics so the
+position can be reviewed at a glance.
+"""
+from __future__ import annotations
+
+import random
+import time
+from datetime import datetime
+from pathlib import Path
+
+import chess
+import chess.pgn
+
+from rorschach.bot import rorschach_move
+from rorschach.engine import PatriciaEngine
+from rorschach.maia import MaiaPredictor
+
+N_GAMES = 10
+ELO_SELF = 1900
+ELO_OPPO = 1900
+SEED = 42
+PROFILE = "balanced"
+TIME_MS = 200
+MAX_PLIES = 200
+MAIA_TYPE = "blitz"
+
+OUT_PATH = Path(__file__).resolve().parent.parent / "data" / "games_vs_maia.pgn"
+
+
+def play_one(
+    engine: PatriciaEngine,
+    maia: MaiaPredictor,
+    *,
+    rorschach_white: bool,
+    rng: random.Random,
+) -> tuple[list[tuple[chess.Move, str]], str]:
+    board = chess.Board()
+    moves: list[tuple[chess.Move, str]] = []
+    while not board.is_game_over(claim_draw=True) and len(moves) < MAX_PLIES:
+        is_rorschach = (board.turn == chess.WHITE) == rorschach_white
+        if is_rorschach:
+            move, info = rorschach_move(
+                board, engine, maia,
+                profile=PROFILE, time_ms=TIME_MS,
+                elo_self=ELO_SELF, elo_oppo=ELO_OPPO,
+            )
+            comment = (
+                f"R Δ={info.delta_used} cp={info.best_cp:+d} "
+                f"loss={info.eval_loss} P={info.p_maia:.3f} "
+                f"win={info.n_in_window} d{info.depth}"
+            )
+        else:
+            move, p = maia.sample(board, ELO_SELF, ELO_OPPO, rng=rng)
+            comment = f"M P={p:.3f}"
+        moves.append((move, comment))
+        board.push(move)
+
+    if board.is_game_over(claim_draw=True):
+        result = board.result(claim_draw=True)
+    else:
+        result = "*"  # hit MAX_PLIES
+    return moves, result
+
+
+def main() -> None:
+    rng = random.Random(SEED)
+    print(f"loading maia2 ({MAIA_TYPE}, elo={ELO_SELF}) ...")
+    maia = MaiaPredictor(type=MAIA_TYPE, device="cpu")
+    print("ok\n")
+
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    score = {"R": 0, "M": 0, "D": 0}
+    t_start = time.perf_counter()
+
+    with PatriciaEngine() as engine, OUT_PATH.open("w") as f:
+        for i in range(N_GAMES):
+            rorschach_white = (i % 2 == 0)
+            t0 = time.perf_counter()
+            moves, result = play_one(engine, maia, rorschach_white=rorschach_white, rng=rng)
+            dt = time.perf_counter() - t0
+
+            game = chess.pgn.Game()
+            game.headers["Event"] = f"Rorschach vs Maia ({PROFILE})"
+            game.headers["Site"] = "local"
+            game.headers["Date"] = datetime.now().strftime("%Y.%m.%d")
+            game.headers["Round"] = str(i + 1)
+            game.headers["White"] = f"Rorschach({PROFILE})" if rorschach_white else f"Maia2-{ELO_SELF}"
+            game.headers["Black"] = f"Maia2-{ELO_SELF}" if rorschach_white else f"Rorschach({PROFILE})"
+            game.headers["Result"] = result
+            game.headers["TimeControl"] = f"0+{TIME_MS/1000:.2f}"
+
+            node = game
+            for move, comment in moves:
+                node = node.add_main_variation(move, comment=comment)
+
+            f.write(str(game) + "\n\n")
+            f.flush()
+
+            # outcome from Rorschach's perspective
+            if result == "1-0":
+                outcome = "R" if rorschach_white else "M"
+            elif result == "0-1":
+                outcome = "M" if rorschach_white else "R"
+            elif result == "*":
+                outcome = "D"  # treat truncated as draw for the score
+            else:
+                outcome = "D"
+            score[outcome] += 1
+
+            color = "W" if rorschach_white else "B"
+            print(f"  game {i+1:2d}  Rorschach={color}  plies={len(moves):3d}  "
+                  f"result={result:5s}  outcome={outcome}  ({dt:.1f}s)")
+
+    elapsed = time.perf_counter() - t_start
+    print(f"\nfinished in {elapsed:.1f}s")
+    print(f"Rorschach score: {score['R']}W / {score['D']}D / {score['M']}L")
+    print(f"PGN -> {OUT_PATH.relative_to(OUT_PATH.parent.parent.parent)}")
+
+
+if __name__ == "__main__":
+    main()
