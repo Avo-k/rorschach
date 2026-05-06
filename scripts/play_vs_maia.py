@@ -15,6 +15,7 @@ import chess.pgn
 
 from rorschach.bot import rorschach_move
 from rorschach.engine import PatriciaEngine
+from rorschach.explorer import OpeningExplorer
 from rorschach.maia import MaiaPredictor
 
 PROFILE_PLAN = [("balanced", 5), ("aggressive", 5)]
@@ -31,6 +32,7 @@ OUT_PATH = Path(__file__).resolve().parent.parent / "data" / "games_vs_maia.pgn"
 def play_one(
     engine: PatriciaEngine,
     maia: MaiaPredictor,
+    explorer: OpeningExplorer,
     *,
     rorschach_white: bool,
     rng: random.Random,
@@ -43,12 +45,13 @@ def play_one(
         if is_rorschach:
             move, info = rorschach_move(
                 board, engine, maia,
+                explorer=explorer,
                 profile=profile, time_ms=TIME_MS,
                 elo_self=ELO_SELF, elo_oppo=ELO_OPPO,
             )
             comment = (
-                f"R Δ={info.delta_used} cp={info.best_cp:+d} "
-                f"loss={info.eval_loss} P={info.p_maia:.3f} "
+                f"R[{info.oracle}] Δ={info.delta_used} cp={info.best_cp:+d} "
+                f"loss={info.eval_loss} P={info.p_human:.3f} "
                 f"win={info.n_in_window} d{info.depth}"
             )
         else:
@@ -67,6 +70,7 @@ def play_one(
 def main() -> None:
     print(f"loading maia2 ({MAIA_TYPE}, elo={ELO_SELF}) ...")
     maia = MaiaPredictor(type=MAIA_TYPE, device="cpu")
+    explorer = OpeningExplorer()
     print("ok\n")
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -84,7 +88,7 @@ def main() -> None:
                 rorschach_white = (i % 2 == 0)
                 t0 = time.perf_counter()
                 moves, result = play_one(
-                    engine, maia,
+                    engine, maia, explorer,
                     rorschach_white=rorschach_white, rng=rng, profile=profile,
                 )
                 dt = time.perf_counter() - t0
@@ -125,7 +129,8 @@ def main() -> None:
     print(f"finished in {elapsed:.1f}s\n")
     for profile, s in scores.items():
         print(f"  {profile:10s}:  {s['R']}W / {s['D']}D / {s['M']}L")
-    print(f"\nPGN -> {OUT_PATH.relative_to(OUT_PATH.parent.parent.parent)}")
+    print(f"\nexplorer:  {explorer.n_hits} hits  /  {explorer.n_misses} misses")
+    print(f"PGN -> {OUT_PATH.relative_to(OUT_PATH.parent.parent.parent)}")
 
 
 if __name__ == "__main__":
