@@ -30,8 +30,8 @@ class OpeningExplorer:
         self,
         db: str = "lichess",
         speeds: tuple[str, ...] = ("blitz", "rapid"),
-        ratings: tuple[int, ...] = (1800, 2000, 2200),
-        min_games: int = 50,
+        ratings: tuple[int, ...] = (1400, 1600, 1800, 2000, 2200, 2500),
+        min_games: int = 10,
         timeout: float = 10.0,
         token: str | None = None,
     ) -> None:
