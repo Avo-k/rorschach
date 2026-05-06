@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# Virtualenv / uv
+.venv/
+.python-version
+
+# Maia-2 model weights (~280 MB, auto-downloaded by gdown on first run)
+maia2_models/
+
+# Patricia binary (download via scripts; user can also vendor it)
+# Comment this out if you want to track the binary in-repo.
+bin/patricia
+bin/patricia_v*
+
+# IDE
+.vscode/
+.idea/
+*.swp

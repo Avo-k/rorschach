@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rorschach"]
+
+[project]
+name = "rorschach"
+version = "0.1.0"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "maia2>=0.9",
+    "python-chess>=1.10",
+    # maia2's PyPI metadata is missing Requires-Dist; deps below are copied
+    # verbatim from the pinned set in maia2/requirements.txt (v0.9).
+    "chess==1.10.0",
+    "einops==0.8.0",
+    "gdown==5.2.0",
+    "numpy==2.1.3",
+    "pandas==2.2.3",
+    "pyzstd==0.15.9",
+    "requests==2.32.3",
+    "torch==2.4.0",
+    "tqdm==4.65.0",
+    # not in maia2's requirements.txt but imported by maia2/utils.py
+    "pyyaml>=6",
+]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
