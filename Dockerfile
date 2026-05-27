@@ -60,7 +60,7 @@ COPY --from=builder /opt/rorschach /opt/rorschach
 COPY --from=builder /opt/lichess-bot /opt/lichess-bot
 
 RUN chmod +x /opt/rorschach/bin/patricia \
- && mkdir -p /data/huggingface /opt/rorschach/maia2_models
+ && mkdir -p /data/huggingface
 
 WORKDIR /opt/lichess-bot
 

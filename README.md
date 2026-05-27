@@ -32,7 +32,7 @@ other:
 | Layer | Tool | Role |
 |---|---|---|
 | Strong engine | **[Patricia 5+](https://github.com/Adam-Kulju/Patricia)** | MultiPV candidate generation with cp evals. Single-threaded NNUE, MIT, ~3500 CCRL. Biased toward sharp lines — compounds with the anti-human filter. |
-| Human predictor | **[Maia-3 / Chessformer](https://github.com/CSSLab/maia3)** (Maia-2 still selectable) | Returns `{uci → P(move)}` over all legal moves, conditioned on `(elo_self, elo_oppo)` and the last 8 board positions. |
+| Human predictor | **[Maia-3 / Chessformer](https://github.com/CSSLab/maia3)** | Returns `{uci → P(move)}` over all legal moves, conditioned on `(elo_self, elo_oppo)` and the last 8 board positions. |
 | Lichess oracle | **[Lichess Opening Explorer](https://lichess.org/api#tag/Opening-Explorer)** | When the position has ≥10 games in the DB, real human frequencies replace Maia's prediction (zero-played moves get P=0 — maximally alien and never made up). |
 | Orchestrator | This repo | Spawns Patricia as a UCI subprocess, calls Maia in-process, runs the selector, exposes a UCI shim for any host. |
 | Lichess client | **[lichess-bot](https://github.com/lichess-bot-devs/lichess-bot)** | Manages the Bot API, challenges, clocks. We plug in via UCI. |
@@ -63,7 +63,7 @@ per move (~+50–100 ms on CPU at 5M params); fits the blitz/rapid budget.
 rorschach/
   rorschach/                   # Python package
     engine.py                  # Patricia UCI wrapper (subprocess + UCI protocol)
-    maia.py                    # Maia-3 (default) and Maia-2 inference wrappers
+    maia.py                    # Maia-3 inference wrapper
     explorer.py                # Lichess Opening Explorer client
     selector.py                # adaptive + narrative selection rules
     bot.py                     # composition root: engine + predictor + selector
@@ -121,8 +121,8 @@ On the first `isready`, the shim loads Patricia + Maia + the explorer.
 | Option | Type | Values | Default |
 |---|---|---|---|
 | `Profile` | combo | `balanced`, `aggressive`, `narrative` | `balanced` |
-| `MaiaType` | combo | `maia3-5m`, `maia3-23m`, `maia3-79m`, `blitz`, `rapid` | `maia3-5m` |
-| `Elo` | spin | 600..2600 (Maia-3) or 1100..2000 (Maia-2) | 1900 |
+| `MaiaType` | combo | `maia3-5m`, `maia3-23m`, `maia3-79m` | `maia3-5m` |
+| `Elo` | spin | 600..2600 | 1900 |
 | `TimeMs` | spin | 0..5000; 0 = derive from clock | 0 |
 
 Per-move info line includes `Δ`, eval `loss`, `P` (Maia of chosen), optional
@@ -147,7 +147,6 @@ CPU-friendly default; 23M / 79M variants exist (more accurate, slower).
 ## Prior art
 
 - **Maia-3 / Chessformer** — [github](https://github.com/CSSLab/maia3) · [models](https://huggingface.co/collections/UofTCSSLab/maia3) · [paper](https://arxiv.org/abs/2605.19091) · [blog](https://lichess.org/@/ashtonanderson/blog/introducing-maia-3-free-and-open-source/vCPPRtX3)
-- **Maia-2** (legacy, kept selectable) — [github](https://github.com/CSSLab/maia2) · [paper](https://arxiv.org/html/2409.20553v1)
 - **Patricia** — [github](https://github.com/Adam-Kulju/Patricia)
 - **lichess-bot** — [github](https://github.com/lichess-bot-devs/lichess-bot)
 - **Detecting Fair Play Violations in Chess Using Neural Networks** (CEUR 2024) — [pdf](https://ceur-ws.org/Vol-3885/paper13.pdf). The adversarial dual of this project's objective: their positive class is exactly our policy.

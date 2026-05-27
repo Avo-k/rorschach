@@ -1,75 +1,17 @@
-"""Human-move predictors. Each returns P(move | position, elos) over all legal moves.
+"""Human-move predictor. Returns P(move | position, elos) over all legal moves.
 
-Two backends:
+:class:`Maia3Predictor` wraps Maia-3 / Chessformer (the ``maia3`` package from
+``github.com/CSSLab/maia3``). Supports the Lichess blitz Elo range 600..2600
+and conditions on the last ``cfg.history`` board positions.
 
-- :class:`MaiaPredictor` wraps Maia-2 (the ``maia2`` PyPI package).
-- :class:`Maia3Predictor` wraps Maia-3 / Chessformer (the ``maia3`` package from
-  ``github.com/CSSLab/maia3``). Default. Stronger predictor, wider Elo range
-  (600..2600), supports board history.
-
-Both expose the same shape:
     predict(board, elo_self, elo_oppo) -> (move_probs: {uci: float}, win_prob: float)
 """
 from __future__ import annotations
 
-import random as _random
 from collections import deque
 from types import SimpleNamespace
 
 import chess
-
-
-class MaiaPredictor:
-    """Maia-2 backend. Loads a model once, then queries per position."""
-
-    def __init__(self, type: str = "rapid", device: str = "cpu") -> None:
-        from maia2 import inference, model
-
-        self._inference = inference
-        self._model = model.from_pretrained(type=type, device=device)
-        self._prepared = inference.prepare()
-        self._name = type
-
-    def predict(
-        self,
-        board: chess.Board,
-        elo_self: int = 1900,
-        elo_oppo: int = 1900,
-    ) -> tuple[dict[str, float], float]:
-        """Return (move_probs: {uci: prob}, predicted_win_prob_for_stm)."""
-        move_probs, win_prob = self._inference.inference_each(
-            self._model,
-            self._prepared,
-            board.fen(),
-            elo_self,
-            elo_oppo,
-        )
-        return move_probs, float(win_prob)
-
-    def sample(
-        self,
-        board: chess.Board,
-        elo_self: int = 1900,
-        elo_oppo: int = 1900,
-        rng: _random.Random | None = None,
-    ) -> tuple[chess.Move, float]:
-        """Sample a move from Maia's probability distribution.
-
-        Returns (move, prob_of_chosen_move). Falls back to argmax if probabilities
-        are degenerate (all zero or NaN).
-        """
-        move_probs, _ = self.predict(board, elo_self, elo_oppo)
-        if not move_probs:
-            raise ValueError("Maia returned no legal-move probabilities")
-        items = list(move_probs.items())
-        total = sum(p for _, p in items)
-        rng = rng or _random
-        if total <= 0:
-            uci = items[0][0]
-        else:
-            weights = [p / total for _, p in items]
-            uci = rng.choices([u for u, _ in items], weights=weights, k=1)[0]
-        return chess.Move.from_uci(uci), float(move_probs[uci])
 
 
 class Maia3Predictor:
@@ -238,15 +180,11 @@ class Maia3Predictor:
         return probs_with, probs_without, win
 
 
-def make_predictor(name: str, device: str = "cpu"):
-    """Factory returning the right backend for ``name``.
+def make_predictor(name: str, device: str = "cpu") -> "Maia3Predictor":
+    """Factory returning a Maia-3 predictor for ``name``.
 
-    Names:
-      - ``blitz`` / ``rapid``                  — Maia-2 (kept for A/B calibration)
-      - ``maia3-5m`` / ``maia3-23m`` / ``maia3-79m`` — Maia-3 / Chessformer
+    Names: ``maia3-5m`` / ``maia3-23m`` / ``maia3-79m``.
     """
-    if name in ("blitz", "rapid"):
-        return MaiaPredictor(type=name, device=device)
     if name.startswith("maia3"):
         return Maia3Predictor(alias=name, device=device)
     raise ValueError(f"unknown maia predictor {name!r}")

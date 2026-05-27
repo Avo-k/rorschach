@@ -143,7 +143,7 @@ def select_narrative(
 
     chosen, _chosen_score = annotated_sorted[0]
     # Report P_with as the visible "human likelihood" so logs stay comparable
-    # with the explorer / maia2 paths that don't compute a break.
+    # with the explorer path that doesn't compute a break.
     return SelectorResult(
         chosen=chosen,
         eval_loss_cp=best_cp - chosen.cp,

@@ -6,8 +6,8 @@
 #   3. docker compose run --rm warmup        # one-shot HF cache prefill
 #   4. docker compose up -d --build
 #
-# Maia-3 only: do not select MaiaType: blitz | rapid in config.yml — those
-# would trigger a 534 MB Maia-2 download with nowhere to persist it.
+# Maia-3 weights land in the hf-cache volume; the image itself stays
+# at ~330 MB.
 
 services:
   rorschach:

@@ -15,7 +15,7 @@ import chess
 
 from rorschach.engine import Candidate, PatriciaEngine
 from rorschach.explorer import OpeningExplorer
-from rorschach.maia import MaiaPredictor
+from rorschach.maia import Maia3Predictor
 from rorschach.selector import select_adaptive, select_adaptive_narrative
 
 PROFILES: dict[str, dict[str, float]] = {
@@ -41,7 +41,7 @@ class MoveInfo:
 def rorschach_move(
     board: chess.Board,
     engine: PatriciaEngine,
-    maia: MaiaPredictor,
+    maia: Maia3Predictor,
     *,
     explorer: OpeningExplorer | None = None,
     profile: str = "balanced",

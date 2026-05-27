@@ -21,10 +21,8 @@ from rorschach.explorer import OpeningExplorer
 from rorschach.maia import make_predictor
 
 MAIA_TYPES = (
-    # Maia-3 / Chessformer (default). 5M is the CPU-friendly pick.
+    # Maia-3 / Chessformer. 5M is the CPU-friendly pick.
     "maia3-5m", "maia3-23m", "maia3-79m",
-    # Maia-2 (legacy, kept for A/B calibration).
-    "blitz", "rapid",
 )
 
 
@@ -109,7 +107,7 @@ def _emit_options() -> None:
     profiles = " ".join(f"var {p}" for p in PROFILES)
     _emit(f"option name Profile type combo default balanced {profiles}")
     _emit("option name TimeMs type spin default 0 min 0 max 5000")  # 0 = use go's clock info
-    # Maia-3 covers Lichess blitz 600..2600; Maia-2 only 1100..2000 (we just clamp at use).
+    # Maia-3 covers Lichess blitz 600..2600.
     _emit("option name Elo type spin default 1900 min 600 max 2600")
     maia_vars = " ".join(f"var {t}" for t in MAIA_TYPES)
     _emit(f"option name MaiaType type combo default maia3-5m {maia_vars}")
@@ -138,11 +136,11 @@ class _Resources:
 
     def __init__(self) -> None:
         self.engine: PatriciaEngine | None = None
-        self.maia = None  # MaiaPredictor | Maia3Predictor
+        self.maia = None  # Maia3Predictor
         self.explorer: OpeningExplorer | None = None
 
     def ensure(self, opts: Options) -> None:
-        # Maia / gdown / tqdm / huggingface_hub chatter goes to stdout by
+        # Maia / huggingface_hub / tqdm chatter goes to stdout by
         # default; that pollutes the UCI channel. Redirect any side-effect
         # prints to stderr while loading. The UCI host parses stdout strictly.
         if self.engine is None:

@@ -9,7 +9,7 @@ __pycache__/
 .venv/
 .python-version
 
-# Maia-2 model weights (~280 MB, auto-downloaded by gdown on first run)
+# Vestigial Maia-2 weights — safe to `rm -rf` locally.
 maia2_models/
 
 # Patricia binary (download via scripts; user can also vendor it)
