@@ -1,0 +1,52 @@
+# Self-host on a VM.
+#
+#   1. cp configs/lichess-bot.docker.yml.example ./config.yml
+#      (edit the token line, or leave the placeholder and rely on env)
+#   2. echo "LICHESS_TOKEN=lip_xxx" > .env
+#   3. docker compose run --rm warmup        # one-shot HF cache prefill
+#   4. docker compose up -d --build
+#
+# Maia-3 only: do not select MaiaType: blitz | rapid in config.yml — those
+# would trigger a 534 MB Maia-2 download with nowhere to persist it.
+
+services:
+  rorschach:
+    build:
+      context: .
+      args:
+        LICHESS_BOT_REF: master
+    image: rorschach:latest
+    container_name: rorschach
+    restart: unless-stopped
+    environment:
+      LICHESS_TOKEN: "${LICHESS_TOKEN:?set LICHESS_TOKEN in .env or shell}"
+    volumes:
+      - ./config.yml:/opt/lichess-bot/config.yml:ro
+      - hf-cache:/data/huggingface
+    stop_grace_period: 30s
+    # 2 vCPU / 2 GB matches the deployment target in CLAUDE.md.
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
+
+  # One-shot: prefill the HF cache with the Maia-3 5M checkpoint so the
+  # first real game doesn't block on a download during isready.
+  #   docker compose run --rm warmup
+  warmup:
+    image: rorschach:latest
+    build:
+      context: .
+      args:
+        LICHESS_BOT_REF: master
+    profiles: ["warmup"]
+    volumes:
+      - hf-cache:/data/huggingface
+    entrypoint:
+      - python
+      - -c
+      - "from rorschach.maia import make_predictor; make_predictor('maia3-5m')"
+
+volumes:
+  hf-cache:

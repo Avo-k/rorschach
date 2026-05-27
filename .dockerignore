@@ -1,0 +1,24 @@
+.git/
+.venv/
+.pytest_cache/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Secrets — never bake into the image.
+.env
+.env.local
+
+# Large data dirs — mount as volumes instead.
+data/
+maia2_models/
+
+# Local-only.
+.vscode/
+.idea/
+*.swp
+tests/
+scripts/
+
+# This file & docs we don't need at build time.
+README.md
