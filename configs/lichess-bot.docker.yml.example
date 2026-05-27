@@ -15,7 +15,7 @@ engine:
     Profile: balanced                   # balanced | aggressive
     TimeMs: 0                           # 0 = derive from clock; else fixed ms per move
     Elo: 1900                           # Maia-3 target Elo (600..2600)
-    MaiaType: maia3-5m                  # maia3-5m | maia3-23m | maia3-79m
+    MaiaType: maia3-79m                 # maia3-5m | maia3-23m | maia3-79m
 
 challenge:
   concurrency: 1
