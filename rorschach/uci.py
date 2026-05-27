@@ -29,9 +29,14 @@ MAIA_TYPES = (
 @dataclass
 class Options:
     profile: str = "balanced"
-    time_ms: int = 200
+    time_ms: int = 400
     elo: int = 1900
     maia_type: str = "maia3-5m"
+    # Opponent rating, set via the standard UCI_Opponent option. Falls back to
+    # `elo` when the host doesn't provide it (or sends "none"). Maia consumes
+    # it as `elo_oppo` — its move distribution shifts based on who it thinks
+    # it's playing against.
+    elo_oppo: int = 1900
 
 
 def _emit(line: str) -> None:
@@ -96,11 +101,13 @@ def _parse_go(args: list[str], turn_white: bool) -> int:
     my_time = wtime if turn_white else btime
     my_inc = (winc if turn_white else binc) or 0
     if my_time is None:
-        return 200  # no clock info — fixed default
+        return 400  # no clock info — fixed default
 
-    # Crude TM: ~2.5% of remaining time + 90% of increment, clamped.
-    budget = int(my_time * 0.025 + my_inc * 0.9)
-    return max(50, min(3000, budget))
+    # Crude TM: ~3.5% of remaining time + 90% of increment, clamped.
+    # The 3.5% (up from 2.5%) gives the verification pass enough budget that
+    # the wider MultiPV scan still hits a useful depth.
+    budget = int(my_time * 0.035 + my_inc * 0.9)
+    return max(100, min(3000, budget))
 
 
 def _emit_options() -> None:
@@ -111,6 +118,32 @@ def _emit_options() -> None:
     _emit("option name Elo type spin default 1900 min 600 max 2600")
     maia_vars = " ".join(f"var {t}" for t in MAIA_TYPES)
     _emit(f"option name MaiaType type combo default maia3-5m {maia_vars}")
+    # Standard UCI option; lichess-bot sends this with the opponent's rating.
+    # Format: "<title> <elo|none> <computer|human> <name>".
+    _emit("option name UCI_Opponent type string default")
+
+
+# Maia's Elo conditioning is clamped to its training range (600..2600). We
+# clip rather than reject so very high-rated or unknown opponents still work.
+_MAIA_ELO_MIN, _MAIA_ELO_MAX = 600, 2600
+
+
+def _parse_uci_opponent_elo(value: str) -> int | None:
+    """Extract the opponent's Elo from a UCI_Opponent value, or None.
+
+    Spec: "<title> <elo|none> <computer|human> <name>". We need the 2nd token.
+    """
+    tokens = value.split()
+    if len(tokens) < 2:
+        return None
+    raw = tokens[1]
+    if raw.lower() == "none":
+        return None
+    try:
+        elo = int(raw)
+    except ValueError:
+        return None
+    return max(_MAIA_ELO_MIN, min(_MAIA_ELO_MAX, elo))
 
 
 def _set_option(opts: Options, words: list[str]) -> None:
@@ -129,6 +162,10 @@ def _set_option(opts: Options, words: list[str]) -> None:
         opts.elo = int(value)
     elif name == "MaiaType" and value in MAIA_TYPES:
         opts.maia_type = value
+    elif name == "UCI_Opponent":
+        parsed = _parse_uci_opponent_elo(value)
+        # No rating known → fall back to our own Elo bucket (1900 by default).
+        opts.elo_oppo = parsed if parsed is not None else opts.elo
 
 
 class _Resources:
@@ -211,17 +248,23 @@ def main() -> None:
                         profile=opts.profile,
                         time_ms=time_ms,
                         elo_self=opts.elo,
-                        elo_oppo=opts.elo,
+                        elo_oppo=opts.elo_oppo,
                     )
                     break_str = (
                         f" break={info.narrative_break:+.3f}"
                         if info.narrative_break is not None
                         else ""
                     )
+                    verify_str = (
+                        f" v_loss={info.verified_loss} v={info.n_verified}"
+                        if info.verified_loss is not None
+                        else ""
+                    )
                     _emit(
                         f"info depth {info.depth or 0} score cp {info.best_cp} "
                         f"string Δ={info.delta_used} loss={info.eval_loss} "
-                        f"P={info.p_human:.3f}{break_str} oracle={info.oracle}"
+                        f"P={info.p_human:.3f}{break_str}{verify_str} "
+                        f"oracle={info.oracle}"
                     )
                     _emit(f"bestmove {move.uci()}")
                 except Exception as exc:  # last-resort fallback so the bot never hangs

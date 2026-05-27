@@ -62,6 +62,28 @@ class PatriciaEngine:
                 best_per_move[move.uci()] = cand
         return sorted(best_per_move.values(), key=lambda c: -c.cp)
 
+    def quick_eval_after_move(
+        self,
+        board: chess.Board,
+        move: chess.Move,
+        time_ms: int,
+    ) -> int | None:
+        """Push `move`, single-PV search, return cp from the moving player's POV.
+
+        Used to verify a candidate's true eval at deeper depth than the wider
+        MultiPV scan saw it. Returns None if the engine produced no usable score.
+        """
+        moving_player = board.turn
+        board.push(move)
+        try:
+            info = self._engine.analyse(
+                board, limit=chess.engine.Limit(time=time_ms / 1000),
+            )
+            score = info["score"].pov(moving_player).score(mate_score=MATE_SCORE)
+            return score
+        finally:
+            board.pop()
+
     def quit(self) -> None:
         self._engine.quit()
 
