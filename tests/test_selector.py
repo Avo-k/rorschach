@@ -4,7 +4,13 @@ from __future__ import annotations
 import chess
 
 from rorschach.engine import Candidate
-from rorschach.selector import adaptive_delta, select, select_adaptive
+from rorschach.selector import (
+    adaptive_delta,
+    select,
+    select_adaptive,
+    select_adaptive_narrative,
+    select_narrative,
+)
 
 
 def _c(uci: str, cp: int) -> Candidate:
@@ -103,3 +109,66 @@ def test_select_adaptive_returns_delta():
     res2, delta2 = select_adaptive(cands, probs, dmax=300)
     assert delta2 == 300
     assert res2.chosen.move.uci() == "d2d4"
+
+
+# --- narrative-aware selector ----------------------------------------------
+
+
+def test_narrative_lambda_zero_reduces_to_select():
+    # With λ=0, score = P_with — same as plain select(). p_without is ignored.
+    cands = [_c("e2e4", 30), _c("d2d4", 20), _c("g1f3", 10)]
+    p_with = {"e2e4": 0.6, "d2d4": 0.3, "g1f3": 0.1}
+    p_without = {"e2e4": 0.0, "d2d4": 0.0, "g1f3": 0.9}  # would flip g1f3 if used
+    res = select_narrative(cands, p_with, p_without, delta_cp=50, lam=0.0)
+    assert res.chosen.move.uci() == "g1f3"  # still least likely under p_with
+
+
+def test_narrative_break_flips_choice():
+    # Same P_with → tie under plain select; the move with the larger positive
+    # break (P_without > P_with, i.e. history made it rarer) should win.
+    cands = [_c("e2e4", 30), _c("d2d4", 25)]
+    p_with = {"e2e4": 0.10, "d2d4": 0.10}
+    # d2d4 was a 0.50 move pre-history; e2e4 was already a 0.10 move.
+    # → break(d2d4) = 0.40, break(e2e4) = 0.00 → narrative picks d2d4.
+    p_without = {"e2e4": 0.10, "d2d4": 0.50}
+    res = select_narrative(cands, p_with, p_without, delta_cp=50, lam=1.0)
+    assert res.chosen.move.uci() == "d2d4"
+    # Reported p_human is still P_with (kept comparable with other oracles).
+    assert res.maia_prob == 0.10
+
+
+def test_narrative_reports_p_with_not_score():
+    cands = [_c("e2e4", 30)]
+    p_with = {"e2e4": 0.2}
+    p_without = {"e2e4": 0.7}
+    res = select_narrative(cands, p_with, p_without, delta_cp=50, lam=1.0)
+    # score = 2*0.2 - 0.7 = -0.3, but maia_prob field shows the actual P_with.
+    assert res.maia_prob == 0.2
+
+
+def test_narrative_missing_probs_treated_as_zero():
+    cands = [_c("e2e4", 30), _c("d2d4", 20)]
+    p_with = {"e2e4": 0.5}    # d2d4 missing → 0
+    p_without = {"e2e4": 0.5}  # break(e2e4)=0, break(d2d4)=0
+    res = select_narrative(cands, p_with, p_without, delta_cp=50, lam=1.0)
+    assert res.chosen.move.uci() == "d2d4"  # P_with=0 wins on score and ties
+
+
+def test_select_adaptive_narrative_returns_delta_and_picks_break():
+    cands = [_c("e2e4", 600), _c("d2d4", 550)]
+    # Both look human under the position alone; d2d4 specifically violates the
+    # game's history → larger break, so narrative picks it.
+    p_with = {"e2e4": 0.20, "d2d4": 0.20}
+    p_without = {"e2e4": 0.20, "d2d4": 0.60}
+    res, delta = select_adaptive_narrative(cands, p_with, p_without, lam=1.0)
+    assert delta == 600  # same adaptive_delta math as the vanilla variant
+    assert res.chosen.move.uci() == "d2d4"
+
+
+def test_select_adaptive_narrative_mate_bypass():
+    cands = [_c("e2g4", 9999), _c("a2a4", 9995)]
+    p_with = {"e2g4": 0.4, "a2a4": 0.001}
+    p_without = {"e2g4": 0.4, "a2a4": 0.9}  # would otherwise scream "pick a2a4"
+    res, delta = select_adaptive_narrative(cands, p_with, p_without, lam=1.0)
+    assert delta == 0  # mate bypass: ignores both probability dicts
+    assert res.chosen.move.uci() == "e2g4"

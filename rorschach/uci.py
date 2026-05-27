@@ -18,7 +18,14 @@ from dotenv import load_dotenv
 from rorschach.bot import PROFILES, rorschach_move
 from rorschach.engine import PatriciaEngine
 from rorschach.explorer import OpeningExplorer
-from rorschach.maia import MaiaPredictor
+from rorschach.maia import make_predictor
+
+MAIA_TYPES = (
+    # Maia-3 / Chessformer (default). 5M is the CPU-friendly pick.
+    "maia3-5m", "maia3-23m", "maia3-79m",
+    # Maia-2 (legacy, kept for A/B calibration).
+    "blitz", "rapid",
+)
 
 
 @dataclass
@@ -26,7 +33,7 @@ class Options:
     profile: str = "balanced"
     time_ms: int = 200
     elo: int = 1900
-    maia_type: str = "blitz"  # "blitz" or "rapid"
+    maia_type: str = "maia3-5m"
 
 
 def _emit(line: str) -> None:
@@ -102,8 +109,10 @@ def _emit_options() -> None:
     profiles = " ".join(f"var {p}" for p in PROFILES)
     _emit(f"option name Profile type combo default balanced {profiles}")
     _emit("option name TimeMs type spin default 0 min 0 max 5000")  # 0 = use go's clock info
-    _emit("option name Elo type spin default 1900 min 1100 max 2000")
-    _emit("option name MaiaType type combo default blitz var blitz var rapid")
+    # Maia-3 covers Lichess blitz 600..2600; Maia-2 only 1100..2000 (we just clamp at use).
+    _emit("option name Elo type spin default 1900 min 600 max 2600")
+    maia_vars = " ".join(f"var {t}" for t in MAIA_TYPES)
+    _emit(f"option name MaiaType type combo default maia3-5m {maia_vars}")
 
 
 def _set_option(opts: Options, words: list[str]) -> None:
@@ -120,7 +129,7 @@ def _set_option(opts: Options, words: list[str]) -> None:
         opts.time_ms = int(value)
     elif name == "Elo":
         opts.elo = int(value)
-    elif name == "MaiaType" and value in {"blitz", "rapid"}:
+    elif name == "MaiaType" and value in MAIA_TYPES:
         opts.maia_type = value
 
 
@@ -129,22 +138,21 @@ class _Resources:
 
     def __init__(self) -> None:
         self.engine: PatriciaEngine | None = None
-        self.maia: MaiaPredictor | None = None
+        self.maia = None  # MaiaPredictor | Maia3Predictor
         self.explorer: OpeningExplorer | None = None
 
     def ensure(self, opts: Options) -> None:
-        # Maia2 / gdown / tqdm chatter goes to stdout by default; that pollutes
-        # the UCI channel. Redirect any side-effect prints to stderr while
-        # loading. The UCI host (lichess-bot) parses stdout strictly.
+        # Maia / gdown / tqdm / huggingface_hub chatter goes to stdout by
+        # default; that pollutes the UCI channel. Redirect any side-effect
+        # prints to stderr while loading. The UCI host parses stdout strictly.
         if self.engine is None:
             _log("loading Patricia ...")
             with contextlib.redirect_stdout(sys.stderr):
                 self.engine = PatriciaEngine()
-        if self.maia is None or getattr(self.maia, "_type", None) != opts.maia_type:
-            _log(f"loading Maia2 ({opts.maia_type}) ...")
+        if self.maia is None or getattr(self.maia, "_name", None) != opts.maia_type:
+            _log(f"loading Maia ({opts.maia_type}) ...")
             with contextlib.redirect_stdout(sys.stderr):
-                self.maia = MaiaPredictor(type=opts.maia_type, device="cpu")
-            self.maia._type = opts.maia_type
+                self.maia = make_predictor(opts.maia_type, device="cpu")
         if self.explorer is None:
             self.explorer = OpeningExplorer()
             if not self.explorer.token:
@@ -207,10 +215,15 @@ def main() -> None:
                         elo_self=opts.elo,
                         elo_oppo=opts.elo,
                     )
+                    break_str = (
+                        f" break={info.narrative_break:+.3f}"
+                        if info.narrative_break is not None
+                        else ""
+                    )
                     _emit(
                         f"info depth {info.depth or 0} score cp {info.best_cp} "
                         f"string Δ={info.delta_used} loss={info.eval_loss} "
-                        f"P={info.p_human:.3f} oracle={info.oracle}"
+                        f"P={info.p_human:.3f}{break_str} oracle={info.oracle}"
                     )
                     _emit(f"bestmove {move.uci()}")
                 except Exception as exc:  # last-resort fallback so the bot never hangs

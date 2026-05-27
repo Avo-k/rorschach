@@ -5,12 +5,19 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["rorschach"]
 
+[tool.hatch.metadata]
+# Required because `maia3` is pinned to a git URL (not on PyPI).
+allow-direct-references = true
+
 [project]
 name = "rorschach"
 version = "0.1.0"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "maia2>=0.9",
+    # Maia-3 (Chessformer, CSSLab 2026). Not on PyPI; install from git.
+    "maia3 @ git+https://github.com/CSSLab/maia3.git",
+    "huggingface-hub>=0.23",
     "python-chess>=1.10",
     # maia2's PyPI metadata is missing Requires-Dist; deps below are copied
     # verbatim from the pinned set in maia2/requirements.txt (v0.9).

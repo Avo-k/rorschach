@@ -104,3 +104,83 @@ def select(
         maia_prob=prob,
         considered=annotated_sorted,
     )
+
+
+def select_narrative(
+    candidates: list[Candidate],
+    probs_with: dict[str, float],
+    probs_without: dict[str, float],
+    delta_cp: int,
+    lam: float = 1.0,
+) -> SelectorResult:
+    """Selector variant that rewards moves the *history* makes rarer.
+
+    score(m) = (1+λ)·P_with(m) − λ·P_without(m)
+             = P_with(m) − λ·break(m),  where break(m) = P_without(m) − P_with(m)
+
+    A positive `break` means the recent game made `m` less likely than the
+    position alone would predict — i.e. the move breaks the game's narrative.
+    Minimizing `score` therefore prefers moves that are both rare on the
+    current position *and* extra-surprising given the way we got here.
+    λ=0 recovers a pure ``select()`` on ``probs_with``.
+
+    Ties broken by higher cp (less-bad moves first), matching ``select()``.
+    """
+    if not candidates:
+        raise ValueError("select_narrative() got no candidates")
+
+    best_cp = candidates[0].cp
+    in_window = [c for c in candidates if best_cp - c.cp <= delta_cp]
+
+    def score(c: Candidate) -> float:
+        uci = c.move.uci()
+        p_with = float(probs_with.get(uci, 0.0))
+        p_without = float(probs_without.get(uci, 0.0))
+        return (1.0 + lam) * p_with - lam * p_without
+
+    annotated = [(c, score(c)) for c in in_window]
+    annotated_sorted = sorted(annotated, key=lambda cp_s: (cp_s[1], -cp_s[0].cp))
+
+    chosen, _chosen_score = annotated_sorted[0]
+    # Report P_with as the visible "human likelihood" so logs stay comparable
+    # with the explorer / maia2 paths that don't compute a break.
+    return SelectorResult(
+        chosen=chosen,
+        eval_loss_cp=best_cp - chosen.cp,
+        maia_prob=float(probs_with.get(chosen.move.uci(), 0.0)),
+        considered=annotated_sorted,
+    )
+
+
+def select_adaptive_narrative(
+    candidates: list[Candidate],
+    probs_with: dict[str, float],
+    probs_without: dict[str, float],
+    *,
+    dmin: int = 200,
+    dmax: int = 1000,
+    safe_thresh: int = 200,
+    slope: float = 1.0,
+    lam: float = 1.0,
+) -> tuple["SelectorResult", int]:
+    """Narrative-aware sibling of ``select_adaptive``.
+
+    Returns (result, delta_used). delta_used = 0 signals a mate-bypass.
+    """
+    if not candidates:
+        raise ValueError("select_adaptive_narrative() got no candidates")
+
+    best = candidates[0]
+    if abs(best.cp) >= MATE_CUTOFF:
+        prob = float(probs_with.get(best.move.uci(), 0.0))
+        return SelectorResult(
+            chosen=best, eval_loss_cp=0, maia_prob=prob, considered=[(best, prob)],
+        ), 0
+
+    delta = adaptive_delta(
+        best.cp, dmin=dmin, dmax=dmax, safe_thresh=safe_thresh, slope=slope,
+    )
+    return (
+        select_narrative(candidates, probs_with, probs_without, delta_cp=delta, lam=lam),
+        delta,
+    )

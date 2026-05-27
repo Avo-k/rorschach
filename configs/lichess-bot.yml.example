@@ -14,10 +14,10 @@ engine:
   silence_stderr: false                 # keep our [rorschach] logs visible
 
   uci_options:
-    Profile: balanced                   # balanced | aggressive | prudent | defensive
+    Profile: balanced                   # balanced | aggressive
     TimeMs: 0                           # 0 = derive from clock; else fixed ms per move
-    Elo: 1900                           # Maia self/opponent Elo (1100..2000)
-    MaiaType: blitz                     # blitz | rapid
+    Elo: 1900                           # Maia target Elo (Maia-3: 600..2600; Maia-2: 1100..2000)
+    MaiaType: maia3-5m                  # maia3-5m | maia3-23m | maia3-79m | blitz | rapid
 
 challenge:
   concurrency: 1
