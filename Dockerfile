@@ -31,7 +31,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY rorschach ./rorschach
 COPY bin ./bin
-COPY README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
