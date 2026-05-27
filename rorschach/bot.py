@@ -19,10 +19,10 @@ from rorschach.maia import Maia3Predictor
 from rorschach.selector import select_adaptive, select_adaptive_narrative
 
 PROFILES: dict[str, dict[str, float]] = {
-    "balanced":   dict(dmin=20, dmax=200, safe_thresh=200, narrative_lambda=0.0),
-    "aggressive": dict(dmin=50, dmax=400, safe_thresh=200, narrative_lambda=0.0),
+    "balanced":   dict(dmin=50, dmax=300, safe_thresh=200, narrative_lambda=0.0),
+    "aggressive": dict(dmin=80, dmax=500, safe_thresh=200, narrative_lambda=0.0),
     # Same window as balanced; turns on the narrative-break score (Maia-3 only).
-    "narrative":  dict(dmin=20, dmax=200, safe_thresh=200, narrative_lambda=1.0),
+    "narrative":  dict(dmin=50, dmax=300, safe_thresh=200, narrative_lambda=1.0),
 }
 
 
