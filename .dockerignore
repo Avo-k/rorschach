@@ -17,7 +17,8 @@ data/
 .idea/
 *.swp
 tests/
-scripts/
+# NOTE: scripts/ is NOT ignored — the Dockerfile COPYs scripts/run_lichess_bot.py
+# (the chat-command launcher) into the image. Excluding it breaks the build.
 
 # This file & docs we don't need at build time.
 README.md
