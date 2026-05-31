@@ -43,21 +43,40 @@ def _setopt(opts: Options, raw: str) -> None:
     _set_option(opts, raw.split())
 
 
-def test_uci_opponent_sets_elo_oppo():
+def test_default_elo_is_auto_tracks_opponent():
+    # No Elo override + opponent known → both self and oppo follow the opponent.
     opts = Options()
     _setopt(opts, "setoption name UCI_Opponent value none 1200 human Alice")
     assert opts.elo_oppo == 1200
+    assert opts.elo_self == 1200  # the cohort we look weird to = the opponent
 
 
-def test_uci_opponent_none_falls_back_to_self_elo():
-    opts = Options(elo=1700)
-    opts.elo_oppo = 9999  # any prior value
-    _setopt(opts, "setoption name UCI_Opponent value none none human Anonymous")
-    assert opts.elo_oppo == 1700  # fell back to opts.elo, NOT to 1900 default
-
-
-def test_uci_opponent_doesnt_touch_self_elo():
+def test_default_elo_unknown_opponent_falls_back_to_default():
     opts = Options()
+    _setopt(opts, "setoption name UCI_Opponent value none none human Anonymous")
+    assert opts.elo_self == 1900  # DEFAULT_ELO
+    assert opts.elo_oppo == 1900
+
+
+def test_explicit_elo_override_pins_self_regardless_of_opponent():
+    opts = Options()
+    _setopt(opts, "setoption name Elo value 1700")
     _setopt(opts, "setoption name UCI_Opponent value none 2200 human Strong")
-    assert opts.elo_oppo == 2200
-    assert opts.elo == 1900  # unchanged
+    assert opts.elo_self == 1700   # pinned bucket
+    assert opts.elo_oppo == 2200   # opponent conditioning still tracks the foe
+
+
+def test_explicit_elo_override_unknown_opponent_mirrors_self():
+    opts = Options()
+    _setopt(opts, "setoption name Elo value 1700")
+    _setopt(opts, "setoption name UCI_Opponent value none none human Anonymous")
+    assert opts.elo_self == 1700
+    assert opts.elo_oppo == 1700  # mirrors self when opponent unknown
+
+
+def test_elo_zero_means_auto():
+    opts = Options()
+    _setopt(opts, "setoption name Elo value 1500")
+    _setopt(opts, "setoption name Elo value 0")  # back to auto
+    assert opts.elo_override is None
+    assert opts.elo_self == 1900  # auto with no opponent → DEFAULT_ELO

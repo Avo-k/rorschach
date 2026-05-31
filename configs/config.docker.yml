@@ -1,23 +1,28 @@
-# Example config.yml for lichess-bot wrapping Rorschach.
-# Copy into your lichess-bot/ directory and edit token + paths.
+# lichess-bot config baked into the Docker image (COPY'd to
+# /opt/lichess-bot/config.yml in the Dockerfile). This is the single
+# source of truth for the deployed bot — edit it here, push, and the
+# autodeploy rebuild picks it up. Nothing to touch on the VM.
+#
+# The only thing that stays on the VM is the secret token, supplied via
+# the LICHESS_TOKEN env var (.env). lichess-bot reads it through the
+# LICHESS_BOT_TOKEN override that compose maps; the placeholder below is
+# never used at runtime.
 
-token: "REPLACE_WITH_YOUR_BOT_TOKEN"   # OAuth token of the BOT account
+token: "set-via-LICHESS_BOT_TOKEN-env"   # overridden by env; do NOT put a real token here
 url: "https://lichess.org/"
 
 engine:
-  dir: "/home/avok/code/rorschach"     # working dir; Rorschach loads .env from here
-  # Absolute path to the rorschach-uci entry point installed in our venv.
-  # `uv sync` creates this; verify with `ls .venv/bin/rorschach-uci`.
+  dir: "/opt/rorschach"
   name: ".venv/bin/rorschach-uci"
   protocol: "uci"
   ponder: false
-  silence_stderr: false                 # keep our [rorschach] logs visible
+  silence_stderr: false                 # keep [rorschach] logs visible
 
   uci_options:
     Profile: balanced                   # balanced | aggressive
     TimeMs: 0                           # 0 = derive from clock; else fixed ms per move
     Elo: 0                              # 0 = auto: look weird to the opponent's own rating (600..2600 pins a fixed bucket)
-    MaiaType: maia3-5m                  # maia3-5m | maia3-23m | maia3-79m
+    MaiaType: maia3-79m                 # maia3-5m | maia3-23m | maia3-79m
 
 challenge:
   concurrency: 1
@@ -25,7 +30,7 @@ challenge:
   only_bot: false
   max_increment: 30
   min_increment: 0
-  max_base: 600                         # in seconds; cap at 10-min games for now
+  max_base: 600
   min_base: 60
   variants:
     - standard

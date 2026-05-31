@@ -34,6 +34,9 @@ COPY bin ./bin
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Launcher that injects the chat-command patch (profiles + greetings).
+COPY scripts ./scripts
+
 # lichess-bot lives next to us; install its deps into the same venv.
 ARG LICHESS_BOT_REF
 RUN git clone --depth 1 --branch "${LICHESS_BOT_REF}" \
@@ -48,7 +51,8 @@ FROM python:${PYTHON_VERSION}-slim AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PATH="/opt/rorschach/.venv/bin:${PATH}" \
-    HF_HOME=/data/huggingface
+    HF_HOME=/data/huggingface \
+    LICHESS_BOT_DIR=/opt/lichess-bot
 
 # libgomp1: torch CPU wheel pulls libgomp at runtime.
 RUN apt-get update \
@@ -58,11 +62,18 @@ RUN apt-get update \
 COPY --from=builder /opt/rorschach /opt/rorschach
 COPY --from=builder /opt/lichess-bot /opt/lichess-bot
 
+# Repo-tracked config baked in — edit configs/config.docker.yml, push,
+# redeploy. The token is injected at runtime via the LICHESS_BOT_TOKEN env.
+COPY configs/config.docker.yml /opt/lichess-bot/config.yml
+
 RUN chmod +x /opt/rorschach/bin/patricia \
  && mkdir -p /data/huggingface
 
 WORKDIR /opt/lichess-bot
 
-# Mount your config.yml here (see configs/lichess-bot.docker.yml.example).
-# Provide LICHESS_TOKEN via env for the opening explorer.
-CMD ["python", "/opt/lichess-bot/lichess-bot.py"]
+# Config is baked in (see COPY above). Provide the token via env:
+#   LICHESS_BOT_TOKEN — lichess API token for the bot
+#   LICHESS_TOKEN     — opening-explorer token (read by rorschach)
+# Run via our launcher (not lichess-bot.py directly) so the chat-command
+# patch — !bal/!agg profile switching, !eval stats — is injected.
+CMD ["python", "/opt/rorschach/scripts/run_lichess_bot.py"]

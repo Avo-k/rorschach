@@ -26,17 +26,36 @@ MAIA_TYPES = (
 )
 
 
+# Maia self/opponent bucket used when the opponent's actual rating is unknown.
+DEFAULT_ELO = 1900
+
+
 @dataclass
 class Options:
     profile: str = "balanced"
     time_ms: int = 400
-    elo: int = 1900
     maia_type: str = "maia3-5m"
-    # Opponent rating, set via the standard UCI_Opponent option. Falls back to
-    # `elo` when the host doesn't provide it (or sends "none"). Maia consumes
-    # it as `elo_oppo` — its move distribution shifts based on who it thinks
-    # it's playing against.
-    elo_oppo: int = 1900
+    # Maia "self" Elo override — the rating cohort we try to look weird to.
+    # None (the default) means *auto*: follow the opponent's actual rating so
+    # the move looks alien to that opponent's level specifically. Set the Elo
+    # UCI option to a value >= 600 to pin a fixed bucket instead.
+    elo_override: int | None = None
+    # Opponent rating from the standard UCI_Opponent option; None when the host
+    # doesn't send one. Maia consumes it as `elo_oppo` — its move distribution
+    # shifts based on who it thinks it's playing against.
+    oppo_elo: int | None = None
+
+    @property
+    def elo_self(self) -> int:
+        """Effective Maia self-Elo: explicit override, else opponent, else default."""
+        if self.elo_override is not None:
+            return self.elo_override
+        return self.oppo_elo if self.oppo_elo is not None else DEFAULT_ELO
+
+    @property
+    def elo_oppo(self) -> int:
+        """Effective Maia opponent-Elo: opponent's rating, else mirror self."""
+        return self.oppo_elo if self.oppo_elo is not None else self.elo_self
 
 
 def _emit(line: str) -> None:
@@ -114,8 +133,9 @@ def _emit_options() -> None:
     profiles = " ".join(f"var {p}" for p in PROFILES)
     _emit(f"option name Profile type combo default balanced {profiles}")
     _emit("option name TimeMs type spin default 0 min 0 max 5000")  # 0 = use go's clock info
-    # Maia-3 covers Lichess blitz 600..2600.
-    _emit("option name Elo type spin default 1900 min 600 max 2600")
+    # Maia-3 covers Lichess blitz 600..2600. 0 (default) = auto: track the
+    # opponent's actual rating (UCI_Opponent); 600..2600 pins a fixed bucket.
+    _emit("option name Elo type spin default 0 min 0 max 2600")
     maia_vars = " ".join(f"var {t}" for t in MAIA_TYPES)
     _emit(f"option name MaiaType type combo default maia3-5m {maia_vars}")
     # Standard UCI option; lichess-bot sends this with the opponent's rating.
@@ -159,13 +179,14 @@ def _set_option(opts: Options, words: list[str]) -> None:
     elif name == "TimeMs":
         opts.time_ms = int(value)
     elif name == "Elo":
-        opts.elo = int(value)
+        # >= Maia floor pins a fixed bucket; anything lower (incl. 0) = auto.
+        v = int(value)
+        opts.elo_override = v if v >= _MAIA_ELO_MIN else None
     elif name == "MaiaType" and value in MAIA_TYPES:
         opts.maia_type = value
     elif name == "UCI_Opponent":
-        parsed = _parse_uci_opponent_elo(value)
-        # No rating known → fall back to our own Elo bucket (1900 by default).
-        opts.elo_oppo = parsed if parsed is not None else opts.elo
+        # None when unknown; the elo_self/elo_oppo properties handle the fallback.
+        opts.oppo_elo = _parse_uci_opponent_elo(value)
 
 
 class _Resources:
@@ -247,7 +268,7 @@ def main() -> None:
                         explorer=resources.explorer,
                         profile=opts.profile,
                         time_ms=time_ms,
-                        elo_self=opts.elo,
+                        elo_self=opts.elo_self,
                         elo_oppo=opts.elo_oppo,
                     )
                     break_str = (

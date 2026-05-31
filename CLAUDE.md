@@ -116,7 +116,7 @@ downloaded from Hugging Face on first use and cached under
 ## Open questions to resolve as we go
 
 - Patricia vs. Stockfish as candidate generator: Patricia's sharpness may compound with Maia anti-filtering (good), or it may cause Maia to assign sharp moves *higher* probability than expected at high Elo (bad). Run a head-to-head.
-- Should `target_elo` for Maia be the opponent's actual rating, or fixed (e.g. 1900) regardless? The latter is simpler and probably good enough.
+- ~~Should `target_elo` for Maia be the opponent's actual rating, or fixed?~~ **Resolved: opponent's actual rating by default.** The `Elo` UCI option defaults to `0` = auto, which sets Maia's `elo_self` (and `elo_oppo`) to the opponent's rating from `UCI_Opponent`, falling back to `DEFAULT_ELO` (1900) when unknown. A non-zero `Elo` pins a fixed bucket.
 - Endgame handling: tablebase moves should bypass the selector. Add Syzygy probing later.
 - Opening book: skip entirely (we want weird moves from move 1) or use a tiny sharp book?
 - Time management: per-move budget, not per-game — keep it dumb at first.

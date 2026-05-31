@@ -109,12 +109,17 @@ cd lichess-bot && pip install -r requirements.txt
 cp ../rorschach/configs/lichess-bot.yml.example config.yml
 
 # 4. put LICHESS_TOKEN in rorschach/.env (for the explorer; bot token is separate)
-# 5. run
-python lichess-bot.py
+# 5. run via our launcher (injects the chat-command patch: !bal/!agg, !eval)
+LICHESS_BOT_DIR=$PWD python ../rorschach/scripts/run_lichess_bot.py
 ```
 
 The example config points lichess-bot at `rorschach/.venv/bin/rorschach-uci`.
 On the first `isready`, the shim loads Patricia + Maia + the explorer.
+
+For the **Docker** deployment, none of the above applies on the host: the
+config (`configs/config.docker.yml`, greetings included) is baked into the
+image and the launcher is the entrypoint. The only host-side state is
+`LICHESS_TOKEN` in `.env`. Edit the config in the repo, push, redeploy.
 
 ### UCI options
 
@@ -122,7 +127,7 @@ On the first `isready`, the shim loads Patricia + Maia + the explorer.
 |---|---|---|---|
 | `Profile` | combo | `balanced`, `aggressive`, `narrative` | `balanced` |
 | `MaiaType` | combo | `maia3-5m`, `maia3-23m`, `maia3-79m` | `maia3-5m` |
-| `Elo` | spin | 600..2600 | 1900 |
+| `Elo` | spin | 0 = auto (track opponent), or 600..2600 | 0 |
 | `TimeMs` | spin | 0..5000; 0 = derive from clock | 0 |
 
 Per-move info line includes `Δ`, eval `loss`, `P` (Maia of chosen), optional

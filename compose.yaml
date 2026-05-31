@@ -1,10 +1,11 @@
 # Self-host on a VM.
 #
-#   1. cp configs/lichess-bot.docker.yml.example ./config.yml
-#      (edit the token line, or leave the placeholder and rely on env)
-#   2. echo "LICHESS_TOKEN=lip_xxx" > .env
-#   3. docker compose run --rm warmup        # one-shot HF cache prefill
-#   4. docker compose up -d --build
+#   1. echo "LICHESS_TOKEN=lip_xxx" > .env   # the only thing on the VM
+#   2. docker compose run --rm warmup        # one-shot HF cache prefill
+#   3. docker compose up -d --build
+#
+# There is no config.yml to manage on the VM: it is baked into the image
+# from configs/config.docker.yml. Edit that file, push, redeploy.
 #
 # Maia-3 weights land in the hf-cache volume; the image itself stays
 # at ~330 MB.
@@ -19,9 +20,14 @@ services:
     container_name: rorschach
     restart: unless-stopped
     environment:
+      # Single secret, supplied via .env. LICHESS_BOT_TOKEN is the lichess
+      # API token (overrides the placeholder in the baked config.yml);
+      # LICHESS_TOKEN is the opening-explorer token read by rorschach.
       LICHESS_TOKEN: "${LICHESS_TOKEN:?set LICHESS_TOKEN in .env or shell}"
+      LICHESS_BOT_TOKEN: "${LICHESS_TOKEN:?set LICHESS_TOKEN in .env or shell}"
     volumes:
-      - ./config.yml:/opt/lichess-bot/config.yml:ro
+      # config.yml is baked into the image (configs/config.docker.yml) — no
+      # mount, so the deployed config is whatever is committed to the repo.
       - hf-cache:/data/huggingface
     stop_grace_period: 30s
     # 2 vCPU / 2 GB matches the deployment target in CLAUDE.md.
