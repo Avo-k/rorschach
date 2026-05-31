@@ -1,6 +1,7 @@
 # Self-host on a VM.
 #
-#   1. echo "LICHESS_TOKEN=lip_xxx" > .env   # the only thing on the VM
+#   1. echo "LICHESS_TOKEN=lip_xxx" > .env   # required
+#      echo "OPENROUTER_API_KEY=sk-or-..." >> .env  # optional, enables chat
 #   2. docker compose run --rm warmup        # one-shot HF cache prefill
 #   3. docker compose up -d --build
 #
@@ -20,11 +21,15 @@ services:
     container_name: rorschach
     restart: unless-stopped
     environment:
-      # Single secret, supplied via .env. LICHESS_BOT_TOKEN is the lichess
-      # API token (overrides the placeholder in the baked config.yml);
-      # LICHESS_TOKEN is the opening-explorer token read by rorschach.
+      # Secrets, supplied via .env (the repo .env is in .dockerignore and not
+      # mounted, so secrets must come through here, not chat._load_env).
+      # LICHESS_BOT_TOKEN is the lichess API token (overrides the placeholder
+      # in the baked config.yml); LICHESS_TOKEN is the opening-explorer token
+      # read by rorschach. OPENROUTER_API_KEY powers the chat personality and
+      # is optional — if absent, the chat silently no-ops.
       LICHESS_TOKEN: "${LICHESS_TOKEN:?set LICHESS_TOKEN in .env or shell}"
       LICHESS_BOT_TOKEN: "${LICHESS_TOKEN:?set LICHESS_TOKEN in .env or shell}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
     volumes:
       # config.yml is baked into the image (configs/config.docker.yml) — no
       # mount, so the deployed config is whatever is committed to the repo.
