@@ -42,7 +42,7 @@ challenge:
     - rated
 
 greeting:
-  hello: "Hi! I play weird-but-sound moves. Default mode: balanced. Type !bal or !agg any time to switch."
+  hello: "Hi! I play weird-but-sound moves. Default mode: balanced — type !bal or !agg to switch. Say 'verbose' and I'll narrate what I see."
   goodbye: "gg"
   hello_spectators: "Rorschach: weird-but-sound moves. Modes: !bal !agg."
   goodbye_spectators: "gg"

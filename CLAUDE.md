@@ -95,6 +95,40 @@ expose profile, fixed-time override, target Elo, and `MaiaType` (one of
 downloaded from Hugging Face on first use and cached under
 `~/.cache/huggingface/`.
 
+## Chat personality (cosmetic)
+
+`rorschach/chat.py` gives the bot an in-character voice in the Lichess chat via
+an LLM (OpenRouter, `deepseek/deepseek-v4-flash`; needs `OPENROUTER_API_KEY` in
+`.env`). It lives in the *lichess-bot* process — the UCI shim has no chat
+channel — and is wired by monkeypatches in `scripts/run_lichess_bot.py`:
+
+- after each of our moves it has a `BASE_PROB` chance (**0.13**, raised to
+  **0.85** on `verbose`, back to 0.13 on `quiet`, off on `silence`) of
+  *offering* a remark; the model then either speaks one sentence or answers
+  `PASS`. The prompt is grounded in real numbers parsed from our UCI `info
+  string`: our move + its `P_human` and eval loss, **the opponent's last move
+  and its Maia probability (`opp_p`/`opp_rank`)**, a **running cumulative
+  predictability score**, the opening, the PGN, and a "what's notable" hint;
+- it **only chats with humans** (skips `game.opponent.is_bot`);
+- it replies to opponent messages in their language, grounded in the live
+  position (reconstructed from the game) plus the lines it spoke earlier.
+
+The opponent-move signal needs an extra Maia pass: the UCI shim runs Maia on
+the position *before* the opponent's last move and emits `opp_p`/`opp_rank` in
+the `info string` (see `_opp_move_prob` in `uci.py`). One extra forward per
+move; cheap on the 5M model, swallowed on error.
+
+Hidden operator command (not in the greeting): typing `log` toggles a raw
+stats dump per move (`P / opp_p / loss / Δ / oracle`).
+
+The **offer rate is calibrated** (`experiments/talk_rate_calibration.py`): over
+180 random positions from 20 human games the model PASSes ~21%, so a 0.13 offer
+lands ~10% effective speak. deepseek-v4-flash reasons little (~130 tokens), so
+each quip is ~$0.0001 (~$0.05 / 100 games); `MAX_TOKENS` still clears its
+reasoning. Model comparison lives in `experiments/chat_model_bakeoff.py`.
+Strictly cosmetic: never touches move selection, all calls are async on daemon
+threads with errors swallowed, and it no-ops without a key.
+
 ## Deployment target
 
 - **Proxmox VM, CPU-only.** Probably a small LXC or VM, 2–4 vCPU, 2–4 GB RAM.

@@ -63,6 +63,27 @@ def _emit(line: str) -> None:
     sys.stdout.flush()
 
 
+def _opp_move_prob(maia, board: chess.Board, elo_self: int, elo_oppo: int):
+    """Maia's probability and rank for the move the opponent just played.
+
+    One extra forward pass on the position *before* the opponent's last move,
+    so the chat layer can score how predictable that move was and keep a running
+    human-likeness tally. Cheap on the 5M model; cosmetic, so failures are
+    swallowed. Returns (prob, rank) or None.
+    """
+    if not board.move_stack:
+        return None
+    prev = board.copy()
+    mv = prev.pop()
+    try:
+        probs, _ = maia.predict(prev, elo_self, elo_oppo)
+    except Exception:
+        return None
+    p = float(probs.get(mv.uci(), 0.0))
+    rank = 1 + sum(1 for v in probs.values() if v > p)
+    return p, rank
+
+
 def _log(msg: str) -> None:
     sys.stderr.write(f"[rorschach] {msg}\n")
     sys.stderr.flush()
@@ -281,11 +302,20 @@ def main() -> None:
                         if info.verified_loss is not None
                         else ""
                     )
+                    # Extra Maia pass: how predictable was the opponent's last
+                    # move? Feeds the chat layer (cumulative human-likeness +
+                    # commentary). Purely cosmetic, never blocks the move.
+                    opp = _opp_move_prob(
+                        resources.maia, board, opts.elo_self, opts.elo_oppo,
+                    )
+                    opp_str = (
+                        f" opp_p={opp[0]:.3f} opp_rank={opp[1]}" if opp else ""
+                    )
                     _emit(
                         f"info depth {info.depth or 0} score cp {info.best_cp} "
                         f"string Δ={info.delta_used} loss={info.eval_loss} "
                         f"P={info.p_human:.3f}{break_str}{verify_str} "
-                        f"oracle={info.oracle}"
+                        f"ourmove={move.uci()}{opp_str} oracle={info.oracle}"
                     )
                     _emit(f"bestmove {move.uci()}")
                 except Exception as exc:  # last-resort fallback so the bot never hangs
