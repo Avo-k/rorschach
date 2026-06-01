@@ -343,6 +343,19 @@ def _our_move_san(board: chess.Board, uci: str | None) -> str | None:
         return None
 
 
+def _move_prefix(board: chess.Board, uci: str | None) -> str | None:
+    """Numbered notation of the move we just played, e.g. "5. Bf4" / "5... Ne7".
+
+    Tags each remark with the move it accompanies, so batched/delayed chat
+    messages can still be matched to the position they're about.
+    """
+    san = _our_move_san(board, uci)
+    if not san:
+        return None
+    n = board.fullmove_number
+    return f"{n}. {san}" if board.turn == chess.WHITE else f"{n}... {san}"
+
+
 @dataclass
 class RorschachChatter:
     """Per-game chat state and behaviour."""
@@ -401,6 +414,8 @@ class RorschachChatter:
             cumulative=self._cumulative_line(),
         )
 
+        prefix = _move_prefix(board, stats.get("ourmove"))
+
         def task() -> None:
             line = _chat_completion([
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -408,7 +423,7 @@ class RorschachChatter:
             ])
             if line:
                 self._remember(line, board)
-                send(line)
+                send(f"{prefix} — {line}" if prefix else line)
 
         _run_async(task)
 
