@@ -49,13 +49,22 @@ Conversation.PROFILE_ALIASES = {
 def _rorschach_command(self: Conversation, line: ChatLine, cmd: str) -> None:  # noqa: D401
     """Drop-in replacement that knows about !bal / !agg."""
     from_self = line.username == self.game.username
+    is_spectator = line.room == "spectator"
     is_eval = cmd.startswith("eval")
     if cmd in ("commands", "help"):
-        self.send_reply(line,
-                        "Modes: !bal (balanced) !agg (aggressive). "
-                        "Other: !wait !name !eval !queue")
+        if is_spectator:
+            # Spectators can't switch modes (that's player-room only), so don't
+            # advertise !bal/!agg to them — only what actually works here.
+            self.send_reply(line, "Spectator commands: !eval (how alien the last move was) !name !queue")
+        else:
+            self.send_reply(line,
+                            "Modes: !bal (balanced) !agg (aggressive). "
+                            "Other: !wait !name !eval !queue")
     elif cmd in ("mode", "modes"):
-        self.send_reply(line, "!bal balanced (default)  |  !agg aggressive")
+        if is_spectator:
+            self.send_reply(line, "My opponent picks the mode. Type !eval to see how alien the last move was.")
+        else:
+            self.send_reply(line, "!bal balanced (default)  |  !agg aggressive")
     elif cmd in self.PROFILE_ALIASES and line.room == "player" and not from_self:
         profile = self.PROFILE_ALIASES[cmd]
         try:
